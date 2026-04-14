@@ -53,6 +53,13 @@ def train_model(data_yaml="datasets/fish/data.yaml", epochs=50, imgsz=640, model
         imgsz=imgsz,
         plots=True,
         device=resolved_device,
+        fliplr=0.5,
+        flipud=0.0,
+        translate=0.1,
+        hsv_h=0.015,
+        hsv_v=0.4,
+        hsv_s=0.7,
+        mosaic=1.0,
     )
 
     print(f"Training complete. Results saved in {results.save_dir}")
