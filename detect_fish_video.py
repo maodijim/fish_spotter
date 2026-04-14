@@ -1,12 +1,48 @@
 import cv2
 from ultralytics import YOLO
 import argparse
+import platform
+import subprocess
+import threading
+import time
 from pathlib import Path
 from datetime import datetime
 from device_utils import resolve_device
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+
+# Minimum seconds between alert sounds to avoid rapid-fire beeping.
+ALERT_COOLDOWN_SECONDS = 3.0
+_last_alert_time = 0.0
+_alert_lock = threading.Lock()
+
+
+def play_alert_sound():
+    """Play a short alert sound in a background thread (non-blocking)."""
+    def _play():
+        global _last_alert_time
+        now = time.monotonic()
+        with _alert_lock:
+            if now - _last_alert_time < ALERT_COOLDOWN_SECONDS:
+                return
+            _last_alert_time = now
+
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.run(["afplay", "/System/Library/Sounds/Ping.aiff"],
+                               check=False, capture_output=True)
+            elif system == "Windows":
+                import winsound
+                winsound.Beep(1000, 200)
+            else:
+                # Linux / other: terminal bell
+                print("\a", end="", flush=True)
+        except Exception:
+            pass
+
+    threading.Thread(target=_play, daemon=True).start()
 
 
 def is_image_file(source):
@@ -101,6 +137,16 @@ def run_inference(model_path, source, conf=0.25, show=True, save=False, device="
                     writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter.fourcc(*"mp4v"), 20.0, (w, h))
                 writer.write(frame)
                 saved_frames += 1
+
+                # Also save each detection frame as a timestamped JPEG.
+                img_dir = Path("runs/detect/stream/images")
+                img_dir.mkdir(parents=True, exist_ok=True)
+                img_path = img_dir / f"detection_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                cv2.imwrite(str(img_path), frame)
+                print(f"Detection saved: {img_path.name} ({detections} fish)")
+
+            if detections > 0:
+                play_alert_sound()
 
             if show:
                 cv2.imshow("Fish Detector", frame)
