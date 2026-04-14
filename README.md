@@ -59,5 +59,19 @@ Run the detection on a video stream or webcam:
 ```bash
 python detect_fish_video.py --model runs/detect/train/weights/best.pt --source 0 --device auto
 ```
-- Windows CUDA example: `python detect_fish_video.py --model runs/detect/train/weights/best.pt --source 0 --device cuda`
+- Windows CUDA example: `python detect_fish_video.py --model model.pt --source 0 --device cuda`
 - Replace `0` with a video/image file path or stream URL as needed.
+
+### 7. Demo
+Example live stream demo (Visdeurbel - Fish Doorbell Project):
+```bash
+python detect_fish_video.py --model runs/detect/train/weights/best.pt --source "https://visdeurbel.videostreams.nl/hls/visdeurbel/index.m3u8" --device auto
+```
+- The script overlays fish boxes and confidence on each frame.
+- Press `q` to stop the stream window.
+
+Demo screenshot:
+
+![Fish detection demo](demo/Image_20260414001508_34836_3.png)
+![Fish detection demo](demo/Image_20260413235250_34831_3.png)
+
