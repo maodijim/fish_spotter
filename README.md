@@ -73,5 +73,5 @@ python detect_fish_video.py --model runs/detect/train/weights/best.pt --source "
 Demo screenshot:
 
 ![Fish detection demo](demo/Image_20260414001508_34836_3.png)
-![Fish detection demo](demo/Image_20260413235250_34831_3.png)
+![Fish detection demo](demo/img.png)
 

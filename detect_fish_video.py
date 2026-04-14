@@ -49,7 +49,7 @@ def is_image_file(source):
     source_path = Path(source)
     return source_path.exists() and source_path.is_file() and source_path.suffix.lower() in IMAGE_SUFFIXES
 
-def run_inference(model_path, source, conf=0.25, show=True, save=False, device="auto"):
+def run_inference(model_path, source, conf=0.35, show=True, save=False, device="auto"):
     """
     Runs inference on a video source.
 
@@ -115,14 +115,17 @@ def run_inference(model_path, source, conf=0.25, show=True, save=False, device="
 
     try:
         for result in results:
-            # Draw bounding boxes on the original frame using cv2
-            frame = result.orig_img.copy()
+            # Keep original clean frame before drawing boxes.
+            original_frame = result.orig_img.copy()
+            frame = original_frame.copy()
             detections = 0
+            max_conf = 0.0
             if result.boxes is not None:
                 detections = len(result.boxes)
                 for box in result.boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                     conf_score = float(box.conf[0])
+                    max_conf = max(max_conf, conf_score)
                     label = f"fish {conf_score:.2f}"
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     cv2.putText(frame, label, (x1, y1 - 8),
@@ -138,12 +141,21 @@ def run_inference(model_path, source, conf=0.25, show=True, save=False, device="
                 writer.write(frame)
                 saved_frames += 1
 
-                # Also save each detection frame as a timestamped JPEG.
                 img_dir = Path("runs/detect/stream/images")
                 img_dir.mkdir(parents=True, exist_ok=True)
-                img_path = img_dir / f"detection_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                cv2.imwrite(str(img_path), frame)
-                print(f"Detection saved: {img_path.name} ({detections} fish)")
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+
+                # Always save the annotated (boxed) frame.
+                boxed_path = img_dir / f"detection_{ts}.jpg"
+                cv2.imwrite(str(boxed_path), frame)
+
+                if max_conf < 0.80:
+                    # Low confidence: also save the clean original for manual review.
+                    orig_path = img_dir / f"detection_{ts}_original.jpg"
+                    cv2.imwrite(str(orig_path), original_frame)
+                    print(f"Low-conf detection saved: {boxed_path.name} + original ({detections} fish, conf={max_conf:.2f})")
+                else:
+                    print(f"Detection saved: {boxed_path.name} ({detections} fish, conf={max_conf:.2f})")
 
             if detections > 0:
                 play_alert_sound()
@@ -164,7 +176,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run fish detection on a video stream.")
     parser.add_argument("--model", default="runs/detect/train/weights/best.pt", help="Path to best.pt.")
     parser.add_argument("--source", default="0", help="Source input (webcam index, video path/URL, or image file path).")
-    parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold.")
+    parser.add_argument("--conf", type=float, default=0.35, help="Confidence threshold.")
     parser.add_argument("--noshow", action="store_true", help="Don't display the video window.")
     parser.add_argument("--save", action="store_true", help="Save the results to a file.")
     parser.add_argument("--device", default="auto", help="Device to use: auto, cuda, mps, or cpu.")
