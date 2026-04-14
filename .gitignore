@@ -1,0 +1,60 @@
+# macOS
+.DS_Store
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env,/
+.python-version
+
+# Environment files
+.env
+.env.*
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# ML/training outputs
+runs/
+wandb/
+mlruns/
+
+# Model artifacts
+#*.pt
+*.onnx
+*.engine
+
+# Label Studio temp/state
+.label-studio/
+
+# Project data artifacts (generated/large)
+#fish_photos/
+datasets/fish/raw_images/
+datasets/fish/exported_labels/
+datasets/fish/images/
+datasets/fish/labels/
+
