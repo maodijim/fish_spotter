@@ -10,6 +10,33 @@ This project provides a complete toolchain for training a YOLO-based fish detect
 pip install -r requirements.txt
 ```
 
+#### CUDA setup (Windows/Linux with NVIDIA GPU)
+If you want to run training or inference with `--device cuda`, install a CUDA-enabled PyTorch build first.
+
+Prerequisites:
+- NVIDIA GPU
+- Recent NVIDIA driver
+- Windows or Linux
+
+Recommended install flow in a virtual environment:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip uninstall -y torch torchvision torchaudio
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+python -m pip install -r requirements.txt
+```
+
+Verify CUDA is available:
+
+```bash
+python -c "import torch; print('torch:', torch.__version__); print('cuda available:', torch.cuda.is_available()); print('gpu:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+```
+
+If `cuda available: True`, you can run this project with `--device cuda` or `--device auto`.
+
+> If you need a different PyTorch/CUDA combination, use the official selector: https://pytorch.org/get-started/locally/
+
 Device notes:
 - Windows/Linux with NVIDIA GPU: use CUDA (`--device cuda`) if your PyTorch install has CUDA support.
 - macOS: CUDA is not available, use Apple Metal (`--device mps`).

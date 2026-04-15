@@ -11,11 +11,14 @@ from device_utils import resolve_device
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+WINDOW_NAME = "Fish Detector"
+WINDOW_SIZE = (1280, 720)
 
 # Minimum seconds between alert sounds to avoid rapid-fire beeping.
 ALERT_COOLDOWN_SECONDS = 3.0
 _last_alert_time = 0.0
 _alert_lock = threading.Lock()
+_window_prepared = False
 
 
 def play_alert_sound():
@@ -49,6 +52,17 @@ def is_image_file(source):
     source_path = Path(source)
     return source_path.exists() and source_path.is_file() and source_path.suffix.lower() in IMAGE_SUFFIXES
 
+
+def prepare_display_window():
+    """Create a resizable OpenCV window for preview output."""
+    global _window_prepared
+    if _window_prepared:
+        return
+
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW_NAME, *WINDOW_SIZE)
+    _window_prepared = True
+
 def run_inference(model_path, source, conf=0.35, show=True, save=False, device="auto"):
     """
     Runs inference on a video source.
@@ -69,6 +83,9 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
 
     resolved_device = resolve_device(device)
     print(f"Using device: {resolved_device}")
+
+    if show:
+        prepare_display_window()
 
     if is_image_file(source):
         print(f"Starting image inference on {source}...")
@@ -91,7 +108,7 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
                     cv2.putText(frame, label, (x1, y1 - 8),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
             if show:
-                cv2.imshow("Fish Detector", frame)
+                cv2.imshow(WINDOW_NAME, frame)
                 print("Press any key to close.")
                 cv2.waitKey(0)
                 cv2.destroyAllWindows()
@@ -161,10 +178,12 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
                 play_alert_sound()
 
             if show:
-                cv2.imshow("Fish Detector", frame)
+                cv2.imshow(WINDOW_NAME, frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
     finally:
+        global _window_prepared
+        _window_prepared = False
         if writer is not None:
             writer.release()
             print(f"Saved {saved_frames} detection frame(s) to: {output_path}")
