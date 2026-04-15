@@ -4,3 +4,5 @@ ultralytics
 opencv-python
 label-studio
 pyyaml
+pillow
+numpy

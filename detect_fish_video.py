@@ -7,6 +7,8 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 from device_utils import resolve_device
 
 
@@ -19,6 +21,10 @@ ALERT_COOLDOWN_SECONDS = 3.0
 _last_alert_time = 0.0
 _alert_lock = threading.Lock()
 _window_prepared = False
+
+# Detection counter state
+_session_detections = 0
+_counter_lock = threading.Lock()
 
 
 def play_alert_sound():
@@ -63,7 +69,114 @@ def prepare_display_window():
     cv2.resizeWindow(WINDOW_NAME, *WINDOW_SIZE)
     _window_prepared = True
 
-def run_inference(model_path, source, conf=0.35, show=True, save=False, device="auto"):
+def get_font():
+    """Get a font that supports CJK characters, with fallback options."""
+    sys_platform = platform.system()
+
+    font_candidates = []
+
+    if sys_platform == "Darwin":  # macOS
+        font_candidates = [
+            "/Library/Fonts/Arial Unicode.ttf",          # best CJK coverage on macOS
+            "/System/Library/Fonts/PingFang.ttc",
+            "/Library/Fonts/SimSun.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+        ]
+    elif sys_platform == "Windows":
+        font_candidates = [
+            "C:\\Windows\\Fonts\\msyh.ttf",
+            "C:\\Windows\\Fonts\\SimHei.ttf",
+            "C:\\Windows\\Fonts\\SimSun.ttc",
+            "C:\\Windows\\Fonts\\arial.ttf",
+        ]
+    elif sys_platform == "Linux":
+        font_candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ]
+
+    # Try each candidate in order
+    for font_path in font_candidates:
+        try:
+            if Path(font_path).exists():
+                return ImageFont.truetype(font_path, 28)
+        except Exception:
+            continue
+
+    # Fallback to PIL default (will not render CJK correctly)
+    try:
+        return ImageFont.load_default()
+    except Exception:
+        return None
+
+
+def draw_counter_overlay(frame, frame_detections, show_counter=True):
+    """Draw detection counter as text overlay on frame with Unicode support.
+
+    Args:
+        frame: Video frame to draw on (BGR numpy array)
+        frame_detections: Number of detections in current frame
+        show_counter: True/False for display, or int 1-10 for style/position
+    """
+
+    # Convert True to 1, False/None to 0
+    if show_counter is True:
+        show_counter = 1
+    elif show_counter is False or show_counter is None:
+        show_counter = 0
+
+    if not show_counter:
+        return frame
+
+    h, w = frame.shape[:2]
+
+    # Position based on counter value (1-5 cycles through corners and edges)
+    position_map = {
+        1: (10, 10),      # top-left
+        2: (w-350, 10),   # top-right
+        3: (10, h-80),    # bottom-left
+        4: (w-350, h-80), # bottom-right
+        5: (w//2-175, 10),# top-center
+    }
+
+    x, y = position_map.get(show_counter % 5 if show_counter > 0 else 1, (10, 10))
+
+    # Semi-transparent background rectangle
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x, y), (x+340, y+70), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
+
+    # Counter text with Unicode support using PIL
+    with _counter_lock:
+        total = _session_detections
+
+    text_content = f"今天总共捉鱼: {total}"
+
+    # Convert BGR frame to RGB numpy array for PIL
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    pil_image = Image.fromarray(np.uint8(frame_rgb))
+    draw = ImageDraw.Draw(pil_image)
+
+    # Get a font that supports Chinese characters
+    font = get_font()
+
+    # Draw text on PIL image with proper encoding
+    text_color = (0, 255, 0)  # Green in RGB
+    if font is not None:
+        draw.text((x+20, y+20), text_content, font=font, fill=text_color)
+    else:
+        # Fallback: draw text without font (will use default)
+        draw.text((x+20, y+20), text_content, fill=text_color)
+
+    # Convert back to BGR numpy array for OpenCV
+    frame_rgb_array = np.array(pil_image)
+    frame_bgr = cv2.cvtColor(frame_rgb_array, cv2.COLOR_RGB2BGR)
+    return frame_bgr
+
+
+def run_inference(model_path, source, conf=0.35, show=True, save=False, device="auto", show_counter=True):
     """
     Runs inference on a video source.
 
@@ -73,6 +186,7 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
         conf (float): Confidence threshold.
         show (bool): Whether to display the video stream.
         save (bool): Whether to save the output video.
+        show_counter (bool): Whether to display detection counter overlay.
     """
     # Load the model
     try:
@@ -125,10 +239,14 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
     )
 
     print(f"Starting stream inference on {source}...")
-    print("Press 'q' to quit.")
+    print("Press 'q' to quit. Press '+'/'-' to manually adjust fish count.")
     writer = None
     output_path = None
     saved_frames = 0
+    global _session_detections, _window_prepared
+
+    # Reset session counter
+    _session_detections = 0
 
     try:
         for result in results:
@@ -177,10 +295,26 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
             if detections > 0:
                 play_alert_sound()
 
+                # Increment session counter
+                with _counter_lock:
+                    _session_detections += detections
+
+            # Draw counter overlay on frame
+            frame = draw_counter_overlay(frame, detections, show_counter)
+
             if show:
                 cv2.imshow(WINDOW_NAME, frame)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord("q"):
                     break
+                elif key in (ord("+"), ord("=")):  # '+' or '=' (no-shift)
+                    with _counter_lock:
+                        _session_detections += 1
+                    print(f"Manual adjust: +1 → {_session_detections}")
+                elif key == ord("-"):
+                    with _counter_lock:
+                        _session_detections = max(0, _session_detections - 1)
+                    print(f"Manual adjust: -1 → {_session_detections}")
     finally:
         global _window_prepared
         _window_prepared = False
@@ -189,6 +323,8 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
             print(f"Saved {saved_frames} detection frame(s) to: {output_path}")
         elif save:
             print("No detections found in stream; no video file was saved.")
+        with _counter_lock:
+            print(f"Stream session complete. Total detections: {_session_detections}")
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
@@ -199,6 +335,8 @@ if __name__ == "__main__":
     parser.add_argument("--noshow", action="store_true", help="Don't display the video window.")
     parser.add_argument("--save", action="store_true", help="Save the results to a file.")
     parser.add_argument("--device", default="auto", help="Device to use: auto, cuda, mps, or cpu.")
+    parser.add_argument("--counter", nargs='?', const=1, type=int, default=None,
+                        help="Show detection counter overlay on stream (0=off, 1-10 for styles/positions).")
 
     args = parser.parse_args()
 
@@ -209,4 +347,5 @@ if __name__ == "__main__":
         show=not args.noshow,
         save=args.save,
         device=args.device,
+        show_counter=args.counter,
     )
