@@ -26,6 +26,10 @@ _window_prepared = False
 _session_detections = 0
 _counter_lock = threading.Lock()
 
+# Cooldown for auto-incrementing the detection count (prevents same fish counting many times)
+DETECTION_COUNT_COOLDOWN_SECONDS = 3.0
+_last_count_time = 0.0
+
 
 def play_alert_sound():
     """Play a short alert sound in a background thread (non-blocking)."""
@@ -244,9 +248,10 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
     output_path = None
     saved_frames = 0
     global _session_detections, _window_prepared
-
-    # Reset session counter
+    # Reset session counter and cooldown timer
     _session_detections = 0
+    global _last_count_time
+    _last_count_time = 0.0
 
     try:
         for result in results:
@@ -295,9 +300,13 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
             if detections > 0:
                 play_alert_sound()
 
-                # Increment session counter
+                # Increment session counter with cooldown to avoid counting the same fish repeatedly.
+                now = time.monotonic()
                 with _counter_lock:
-                    _session_detections += detections
+                    if now - _last_count_time >= DETECTION_COUNT_COOLDOWN_SECONDS:
+                        _session_detections += detections
+                        _last_count_time = now
+                        print(f"Fish counted: +{detections} → total {_session_detections} (next count in {DETECTION_COUNT_COOLDOWN_SECONDS}s)")
 
             # Draw counter overlay on frame
             frame = draw_counter_overlay(frame, detections, show_counter)
