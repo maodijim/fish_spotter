@@ -180,7 +180,16 @@ def draw_counter_overlay(frame, frame_detections, show_counter=True):
     return frame_bgr
 
 
-def run_inference(model_path, source, conf=0.35, show=True, save=False, device="auto", show_counter=True):
+def run_inference(
+    model_path,
+    source,
+    conf=0.35,
+    show=True,
+    save=False,
+    device="auto",
+    show_counter=True,
+    initial_count=0,
+):
     """
     Runs inference on a video source.
 
@@ -191,6 +200,7 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
         show (bool): Whether to display the video stream.
         save (bool): Whether to save the output video.
         show_counter (bool): Whether to display detection counter overlay.
+        initial_count (int): Initial value for session detection counter.
     """
     # Load the model
     try:
@@ -249,7 +259,7 @@ def run_inference(model_path, source, conf=0.35, show=True, save=False, device="
     saved_frames = 0
     global _session_detections, _window_prepared
     # Reset session counter and cooldown timer
-    _session_detections = 0
+    _session_detections = max(0, int(initial_count))
     global _last_count_time
     _last_count_time = 0.0
 
@@ -346,6 +356,8 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="auto", help="Device to use: auto, cuda, mps, or cpu.")
     parser.add_argument("--counter", nargs='?', const=1, type=int, default=None,
                         help="Show detection counter overlay on stream (0=off, 1-10 for styles/positions).")
+    parser.add_argument("--initial-count", type=int, default=0,
+                        help="Initial fish count shown by the counter (default: 0).")
 
     args = parser.parse_args()
 
@@ -357,4 +369,5 @@ if __name__ == "__main__":
         save=args.save,
         device=args.device,
         show_counter=args.counter,
+        initial_count=args.initial_count,
     )
